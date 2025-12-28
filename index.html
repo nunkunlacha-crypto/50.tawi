@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบตรวจสอบข้อมูล 50 ทวิ ฉบับสมบูรณ์</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: 'Tahoma', sans-serif; background-color: #f0f2f5; margin: 0; padding: 15px; }
+        .container { max-width: 850px; margin: auto; padding: 25px; background: white; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); border-top: 10px solid #880e4f; }
+        h1 { color: #880e4f; text-align: center; font-size: 22px; margin-bottom: 20px; }
+        .search-area { display: flex; gap: 8px; margin-bottom: 20px; background: #fce4ec; padding: 20px; border-radius: 10px; }
+        input[type="text"] { flex: 1; padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; outline: none; }
+        button { padding: 12px 25px; background: #880e4f; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        #status { text-align: center; font-weight: bold; margin-bottom: 15px; font-size: 14px; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 14px; }
+        th { background: #fce4ec; color: #880e4f; width: 40%; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        .highlight { color: #880e4f; font-weight: bold; }
+
+        .btn-print { background-color: #2e7d32; width: 100%; margin-top: 20px; padding: 15px; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
+
+        @media print {
+            .search-area, button, #status, h1 { display: none !important; }
+            .container { box-shadow: none; border: none; width: 100%; padding: 0; }
+        }
+    </style>
+</head>
+<body onload="fetchData()">
+
+    <div class="container">
+        <h1>หนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ)</h1>
+        <div id="status" style="text-align:center; margin-bottom:10px;">⏳ กำลังโหลดข้อมูล...</div>
+
+        <div class="search-area">
+            <input type="text" id="taxIdInput" placeholder="เลขประจำตัวผู้เสียภาษี 13 หลัก" maxlength="13">
+            <button onclick="doSearch()">ค้นหา</button>
+        </div>
+
+        <div id="resultArea"></div>
+    </div>
+
+    <script>
+        const CSV_URL = 'https://docs.google.com/spreadsheets/d/1rpXCyMHEyLmkyZsx1JjMB81kMFeBeNBtcwfhpeiMUpE/export?format=csv&gid=0';
+        let db = [];
+
+        async function fetchData() {
+            try {
+                const res = await fetch(CSV_URL + '&cache=' + new Date().getTime());
+                const text = await res.text();
+                const wb = XLSX.read(text, { type: 'string' });
+                const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+                const headers = rows[4]; 
+                db = rows.slice(5).map(row => {
+                    let obj = {};
+                    headers.forEach((h, i) => { if(h) obj[h.trim()] = row[i]; });
+                    return obj;
+                });
+                document.getElementById('status').innerHTML = '<span style="color:green">✅ เชื่อมต่อข้อมูลสำเร็จ</span>';
+            } catch (err) {
+                document.getElementById('status').innerHTML = '<span style="color:red">❌ ไม่สามารถดึงข้อมูลได้</span>';
+            }
+        }
+
+        function doSearch() {
+            const input = document.getElementById('taxIdInput').value.replace(/[^0-9]/g, '');
+            const output = document.getElementById('resultArea');
+            const found = db.find(item => String(item['เลขประจำตัวผู้เสียภาษีอากร'] || '').replace(/[^0-9]/g, '') === input);
+
+            if (found) {
+                output.innerHTML = `
+                    <table>
+                        <tr><th>เลขประจำตัวผู้เสียภาษีอากร</th><td>${found['เลขประจำตัวผู้เสียภาษีอากร'] || '-'}</td></tr>
+                        <tr><th>ชื่อ - นามสกุล</th><td>${found['ชื่อ - นามสกุล'] || '-'}</td></tr>
+                        <tr><th>ที่อยู่</th><td>${found['ที่อยู่'] || '-'}</td></tr>
+                        <tr><th>ลำดับที่</th><td>${found['ลำดับที่'] || '-'}</td></tr>
+                        <tr><th>วัน เดือน หรือปีภาษีที่จ่าย</th><td>${found['วัน เดือน หรือปีภาษีที่จ่าย'] || '-'}</td></tr>
+                        <tr><th>จำนวนเงินที่จ่าย</th><td>${formatNum(found['จำนวนเงินที่จ่าย'])} บาท</td></tr>
+                        <tr><th>ภาษีหักและนำส่งไว้</th><td>${formatNum(found['ภาษี่หักและนำส่งไว้'] || found['ภาษีหักและนำส่งไว้'])} บาท</td></tr>
+                        <tr><th>เงินกองทุนสำรองเลี้ยงชีพ</th><td>${found['เงินกองทุนสำรองเลี้ยงชีพ'] || '-'}</td></tr>
+                        <tr><th>เงินประกันสังคม</th><td>${found['เงินประกันสังคม'] || '-'}</td></tr>
+                        <tr><th>จำนวนเงินที่จ่าย (สะสม)</th><td>${formatNum(found['จำนวนเงินที่จ่ายสะสม'])}</td></tr>
+                        <tr><th>ภาษีที่หัก (สะสม)</th><td>${formatNum(found['ภาษีที่หักสะสม'])}</td></tr>
+                        <tr><th>ผู้จ่ายเงินได้</th><td>${found['ชื่อบริษัทที่มีหน้าที่หักภาษี ณ ที่จ่าย'] || '-'}</td></tr>
+                        <tr><th>เลขผู้เสียภาษี (ผู้จ่าย)</th><td>${found['เลขประจำตัวผู้เสียภาษีอากรของผู้มีหน้าที่หักภาษี ณ ที่จ่าย'] || '-'}</td></tr>
+                        <tr><th>ที่อยู่ (ผู้จ่าย)</th><td>${found['ที่อยู่บริษัทที่มีหน้าที่หักภาษี ณ ที่จ่าย'] || '-'}</td></tr>
+                        <tr><th>ประเภทภาษีเงินได้</th><td class="highlight">${found['ประเภทภาษีเงินได้'] || '-'}</td></tr>
+                    </table>
+                    <button class="btn-print" onclick="window.print()">พิมพ์เอกสาร / Save PDF</button>
+                `;
+            } else {
+                output.innerHTML = '<p style="color:red; text-align:center;">❌ ไม่พบข้อมูล</p>';
+            }
+        }
+
+        function formatNum(val) {
+            let n = parseFloat(String(val).replace(/,/g, ''));
+            return isNaN(n) ? '0.00' : n.toLocaleString('th-TH', {minimumFractionDigits: 2});
+        }
+    </script>
+</body>
+</html>
